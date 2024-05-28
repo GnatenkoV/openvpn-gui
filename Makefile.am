@@ -92,6 +92,7 @@ openvpn_gui_SOURCES = \
 	openvpn.c openvpn.h \
 	localization.c localization.h \
 	tray.c tray.h \
+	totp_gen.c totp_gen.h \
 	viewlog.c viewlog.h \
 	service.c service.h \
 	options.c options.h \

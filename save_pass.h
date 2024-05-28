@@ -33,9 +33,13 @@ int SaveAuthPass(const WCHAR *config_name, const WCHAR *password);
 
 int SaveUsername(const WCHAR *config_name, const WCHAR *username);
 
+int SaveTOTP(const WCHAR* config_name, const WCHAR* totp);
+
 int RecallKeyPass(const WCHAR *config_name, WCHAR *password);
 
 int RecallAuthPass(const WCHAR *config_name, WCHAR *password);
+
+int RecallTOTP(const WCHAR* config_name, const WCHAR* totp);
 
 int RecallUsername(const WCHAR *config_name, WCHAR *username);
 

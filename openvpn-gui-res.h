@@ -381,6 +381,7 @@
 /* Invalid input errors */
 #define IDS_ERR_INVALID_PASSWORD_INPUT  2152
 #define IDS_ERR_INVALID_USERNAME_INPUT  2153
+#define IDS_ERR_INVALID_TOTP_INPUT      2153
 
 /* pkcs11 related */
 #define IDS_ERR_NO_PKCS11               2160

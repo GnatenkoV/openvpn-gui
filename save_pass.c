@@ -31,6 +31,7 @@
 #include "save_pass.h"
 #include "misc.h"
 
+#define TOTP_PASS_DATA    L"totp-data"
 #define KEY_PASS_DATA     L"key-data"
 #define AUTH_PASS_DATA    L"auth-data"
 #define ENTROPY_DATA      L"entropy"
@@ -256,6 +257,32 @@ RecallUsername(const WCHAR *config_name, WCHAR *username)
     return 1;
 }
 
+int
+SaveTOTP(const WCHAR* config_name, const WCHAR* totp)
+{
+    DWORD len = (wcslen(totp) + 1) * sizeof(*totp);
+    SetConfigRegistryValueBinary(config_name, TOTP_PASS_DATA, (BYTE*)totp, len);
+    return 1;
+}
+/*
+ * The buffer username should be have space for up to USER_PASS_LEN
+ * WCHARs including nul.
+ */
+int
+RecallTOTP(const WCHAR* config_name, WCHAR* totp)
+{
+    DWORD capacity = USER_PASS_LEN * sizeof(WCHAR);
+    DWORD len;
+
+    len = GetConfigRegistryValue(config_name, TOTP_PASS_DATA, (BYTE*)totp, capacity);
+    if (len == 0)
+    {
+        return 0;
+    }
+    totp[USER_PASS_LEN - 1] = L'\0';
+    return 1;
+}
+
 void
 DeleteSavedKeyPass(const WCHAR *config_name)
 {
@@ -275,6 +302,14 @@ DeleteSavedPasswords(const WCHAR *config_name)
     DeleteConfigRegistryValue(config_name, KEY_PASS_DATA);
     DeleteConfigRegistryValue(config_name, AUTH_PASS_DATA);
     DeleteConfigRegistryValue(config_name, ENTROPY_DATA);
+    DeleteConfigRegistryValue(config_name, TOTP_PASS_DATA);
+    
+}
+
+void
+DeleteSavedTOTP(const WCHAR* config_name)
+{
+    DeleteConfigRegistryValue(config_name, TOTP_PASS_DATA);
 }
 
 /* check if auth password is saved */

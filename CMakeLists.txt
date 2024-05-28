@@ -25,6 +25,7 @@ add_executable(${PROJECT_NAME} WIN32
     as.c
     pkcs11.c
     config_parser.c
+    totp_gen.c
     res/openvpn-gui-res.rc)
 
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DDEBUG")

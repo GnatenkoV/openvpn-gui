@@ -60,6 +60,7 @@
 #include "env_set.h"
 #include "echo.h"
 #include "pkcs11.h"
+#include "totp_gen.h"
 
 #define OPENVPN_SERVICE_PIPE_NAME_OVPN2 L"\\\\.\\pipe\\openvpn\\service"
 #define OPENVPN_SERVICE_PIPE_NAME_OVPN3 L"\\\\.\\pipe\\ovpnagent"
@@ -547,6 +548,7 @@ UserAuthDialogFunc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM lParam)
     auth_param_t *param;
     WCHAR username[USER_PASS_LEN] = L"";
     WCHAR password[USER_PASS_LEN] = L"";
+    WCHAR totp[USER_PASS_LEN] = L"";
 
     switch (msg)
     {
@@ -585,6 +587,11 @@ UserAuthDialogFunc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM lParam)
                 SetDlgItemTextW(hwndDlg, ID_EDT_AUTH_USER, username);
                 SetFocus(GetDlgItem(hwndDlg, ID_EDT_AUTH_PASS));
             }
+            if (RecallUsername(param->c->config_name, username))
+            {
+                SetDlgItemTextW(hwndDlg, ID_EDT_AUTH_USER, username);
+                SetFocus(GetDlgItem(hwndDlg, ID_EDT_AUTH_PASS));
+            }
             if (RecallAuthPass(param->c->config_name, password))
             {
                 SetDlgItemTextW(hwndDlg, ID_EDT_AUTH_PASS, password);
@@ -609,7 +616,7 @@ UserAuthDialogFunc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM lParam)
                     SetFocus(GetDlgItem(hwndDlg, ID_EDT_AUTH_CHALLENGE));
                 }
                 SecureZeroMemory(password, sizeof(password));
-            }
+            }            
             if (param->c->flags & FLAG_DISABLE_SAVE_PASS)
             {
                 ShowWindow(GetDlgItem(hwndDlg, ID_CHK_SAVE_PASS), SW_HIDE);
@@ -707,6 +714,7 @@ UserAuthDialogFunc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM lParam)
                         }
                         SecureZeroMemory(password, sizeof(password));
                     }
+
                     ManagementCommandFromInput(param->c, "username \"Auth\" \"%s\"", hwndDlg, ID_EDT_AUTH_USER);
                     if (param->flags & FLAG_CR_TYPE_SCRV1)
                     {
@@ -768,6 +776,76 @@ UserAuthDialogFunc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM lParam)
     return FALSE;
 }
 
+INT_PTR ProceedOTP(HWND hwndDlg, WPARAM wParam, auth_param_t* param, LPCWCHAR password, bool savePassword)
+{
+    const char* template;
+    char* fmt;
+
+    if (savePassword)
+    {
+        SaveTOTP(param->c->config_name, password);
+    }
+
+    int code = GenerateTOTP(password);
+    wchar_t buffer[7];
+    int len = swprintf_s(buffer, 7, L"%06lu", code);
+
+    SetDlgItemTextW(hwndDlg, ID_EDT_RESPONSE, buffer);
+
+    if (param->flags & FLAG_CR_TYPE_CRTEXT)
+    {
+        ManagementCommandFromInputBase64(param->c, "cr-response \"%s\"", hwndDlg, ID_EDT_RESPONSE);
+        EndDialog(hwndDlg, LOWORD(wParam));
+        return TRUE;
+    }
+    if (param->flags & FLAG_CR_TYPE_CRV1)
+    {
+        /* send username */
+        template = "username \"Auth\" \"%s\"";
+        char* username = escape_string(param->user);
+        fmt = malloc(strlen(template) + strlen(username));
+
+        if (fmt && username)
+        {
+            sprintf(fmt, template, username);
+            ManagementCommand(param->c, fmt, NULL, regular);
+        }
+        else /* no memory? send an emty username and let it error out */
+        {
+            WriteStatusLog(param->c, L"GUI> ",
+                L"Out of memory: sending a generic username for dynamic CR", false);
+            ManagementCommand(param->c, "username \"Auth\" \"user\"", NULL, regular);
+        }
+        free(fmt);
+        free(username);
+
+        /* password template */
+        template = "password \"Auth\" \"CRV1::%s::%%s\"";
+    }
+    else /* generic password request of type param->id */
+    {
+        template = "password \"%s\" \"%%s\"";
+    }
+
+    fmt = malloc(strlen(template) + strlen(param->id));
+    if (fmt)
+    {
+        sprintf(fmt, template, param->id);
+        PrintDebug(L"Send passwd to mgmt with format: '%hs'", fmt);
+        ManagementCommandFromInput(param->c, fmt, hwndDlg, ID_EDT_RESPONSE);
+        free(fmt);
+    }
+    else /* no memory? send stop signal */
+    {
+        WriteStatusLog(param->c, L"GUI> ",
+            L"Out of memory in password dialog: sending stop signal", false);
+        StopOpenVPN(param->c);
+    }
+
+    EndDialog(hwndDlg, LOWORD(wParam));
+    return TRUE;
+}
+
 /*
  * DialogProc for challenge-response, token PIN etc.
  */
@@ -789,6 +867,17 @@ GenericPassDialogFunc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM lParam)
                 WriteStatusLog(param->c, L"GUI> ", L"Error converting challenge string to widechar", false);
                 EndDialog(hwndDlg, LOWORD(wParam));
                 break;
+            }
+            if (RecallTOTP(param->c->config_name, password))
+            {
+                if (param->flags & FLAG_CR_TYPE_SCRV1)
+                {
+                    SetFocus(GetDlgItem(hwndDlg, ID_EDT_RESPONSE));
+                }
+                ProceedOTP(hwndDlg, wParam, lParam, password, false);
+                SecureZeroMemory(password, sizeof(password));
+
+                return TRUE;
             }
             if (param->flags & FLAG_CR_TYPE_CRV1 || param->flags & FLAG_CR_TYPE_CRTEXT)
             {
@@ -860,8 +949,6 @@ GenericPassDialogFunc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 
         case WM_COMMAND:
             param = (auth_param_t *) GetProp(hwndDlg, cfgProp);
-            const char *template;
-            char *fmt;
             switch (LOWORD(wParam))
             {
                 case ID_EDT_RESPONSE:
@@ -879,65 +966,15 @@ GenericPassDialogFunc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM lParam)
                     break;
 
                 case IDOK:
-                    if (GetDlgItemTextW(hwndDlg, ID_EDT_RESPONSE, password, _countof(password))
-                        && !validate_input(password, L"\n"))
+
+                    if (GetDlgItemTextW(hwndDlg, ID_EDT_RESPONSE, password, _countof(password)) && !validate_input(password, L"\n"))
                     {
                         show_error_tip(GetDlgItem(hwndDlg, ID_EDT_RESPONSE), LoadLocalizedString(IDS_ERR_INVALID_PASSWORD_INPUT));
                         SecureZeroMemory(password, sizeof(password));
                         return 0;
                     }
-                    if (param->flags & FLAG_CR_TYPE_CRTEXT)
-                    {
-                        ManagementCommandFromInputBase64(param->c, "cr-response \"%s\"", hwndDlg, ID_EDT_RESPONSE);
-                        EndDialog(hwndDlg, LOWORD(wParam));
-                        return TRUE;
-                    }
-                    if (param->flags & FLAG_CR_TYPE_CRV1)
-                    {
-                        /* send username */
-                        template = "username \"Auth\" \"%s\"";
-                        char *username = escape_string(param->user);
-                        fmt = malloc(strlen(template) + strlen(username));
 
-                        if (fmt && username)
-                        {
-                            sprintf(fmt, template, username);
-                            ManagementCommand(param->c, fmt, NULL, regular);
-                        }
-                        else /* no memory? send an emty username and let it error out */
-                        {
-                            WriteStatusLog(param->c, L"GUI> ",
-                                           L"Out of memory: sending a generic username for dynamic CR", false);
-                            ManagementCommand(param->c, "username \"Auth\" \"user\"", NULL, regular);
-                        }
-                        free(fmt);
-                        free(username);
-
-                        /* password template */
-                        template = "password \"Auth\" \"CRV1::%s::%%s\"";
-                    }
-                    else /* generic password request of type param->id */
-                    {
-                        template = "password \"%s\" \"%%s\"";
-                    }
-
-                    fmt = malloc(strlen(template) + strlen(param->id));
-                    if (fmt)
-                    {
-                        sprintf(fmt, template, param->id);
-                        PrintDebug(L"Send passwd to mgmt with format: '%hs'", fmt);
-                        ManagementCommandFromInput(param->c, fmt, hwndDlg, ID_EDT_RESPONSE);
-                        free(fmt);
-                    }
-                    else /* no memory? send stop signal */
-                    {
-                        WriteStatusLog(param->c, L"GUI> ",
-                                       L"Out of memory in password dialog: sending stop signal", false);
-                        StopOpenVPN(param->c);
-                    }
-
-                    EndDialog(hwndDlg, LOWORD(wParam));
-                    return TRUE;
+                    return ProceedOTP(hwndDlg, wParam, param, password, true);
 
                 case IDCANCEL:
                     EndDialog(hwndDlg, LOWORD(wParam));
@@ -1006,14 +1043,6 @@ PrivKeyPassDialogFunc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM lParam)
                 ManagementCommandFromInput(c, "password \"Private Key\" \"%s\"", hwndDlg, ID_EDT_PASSPHRASE);
                 EndDialog(hwndDlg, IDOK);
                 return TRUE;
-            }
-            if (c->flags & FLAG_DISABLE_SAVE_PASS)
-            {
-                ShowWindow(GetDlgItem(hwndDlg, ID_CHK_SAVE_PASS), SW_HIDE);
-            }
-            else if (c->flags & FLAG_SAVE_KEY_PASS)
-            {
-                Button_SetCheck(GetDlgItem(hwndDlg, ID_CHK_SAVE_PASS), BST_CHECKED);
             }
             if (c->failed_psw_attempts > 0)
             {

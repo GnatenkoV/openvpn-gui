@@ -131,6 +131,12 @@ SaveUsername(UNUSED const WCHAR *config_name, UNUSED const WCHAR *username)
 {
     return 1;
 }
+int
+SaveTOTP(UNUSED const WCHAR* config_name, UNUSED const WCHAR* totp)
+{
+    return 1;
+}
+
 
 int
 RecallKeyPass(UNUSED const WCHAR *config_name, UNUSED WCHAR *password)
@@ -144,6 +150,11 @@ RecallAuthPass(UNUSED const WCHAR *config_name, UNUSED WCHAR *password)
 }
 int
 RecallUsername(UNUSED const WCHAR *config_name, UNUSED WCHAR *username)
+{
+    return 0;
+}
+int
+RecallTOTP(UNUSED const WCHAR* config_name, UNUSED WCHAR* totp)
 {
     return 0;
 }
