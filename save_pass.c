@@ -303,7 +303,6 @@ DeleteSavedPasswords(const WCHAR *config_name)
     DeleteConfigRegistryValue(config_name, AUTH_PASS_DATA);
     DeleteConfigRegistryValue(config_name, ENTROPY_DATA);
     DeleteConfigRegistryValue(config_name, TOTP_PASS_DATA);
-    
 }
 
 void

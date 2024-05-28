@@ -862,6 +862,14 @@ GenericPassDialogFunc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM lParam)
             TRY_SETPROP(hwndDlg, cfgProp, (HANDLE) param);
 
             WCHAR *wstr = Widen(param->str);
+
+            if (wcscmp(wstr, L"Enter OTP Code") == 0)
+            {
+                free(wstr);
+
+                wstr = Widen("Enter OTP Secret");
+            }
+
             if (!wstr)
             {
                 WriteStatusLog(param->c, L"GUI> ", L"Error converting challenge string to widechar", false);
