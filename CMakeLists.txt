@@ -118,6 +118,7 @@ add_library(${PROJECT_NAME_PLAP} SHARED
     registry.c
     config_parser.c
     service.c
+    totp_gen.c
     plap/ui_glue.c
     plap/stub.c
     plap/plap_common.c
