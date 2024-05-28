@@ -1,4 +1,4 @@
-OpenVPN GUI
+OpenVPN GUI with Google Auth TOTP generator
 #####################################################
 .. image:: https://travis-ci.org/OpenVPN/openvpn-gui.svg?branch=master
   :target: https://travis-ci.org/OpenVPN/openvpn-gui
